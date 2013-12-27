@@ -1,0 +1,48 @@
+#include "VariableTimeout/VariableTimeout.h"
+
+#include "boost/date_time/posix_time/posix_time.hpp"
+#include <cstdint>
+#include "boost/bind.hpp"
+
+#include <iostream>
+
+template <class T>
+VariableTimeout<T>::VariableTimeout(int timeout)
+: timeout(timeout), stillValid(false)
+{}
+
+template <class T>
+T VariableTimeout<T>::getValue()
+{
+	this->mtx.lock();
+	bool localStillValid = this->stillValid;
+	this->mtx.unlock();
+
+	if (!localStillValid)
+	{
+		// Get the new variable value
+		this->variable = this->obtain();
+
+		// Reset the timer
+		this->timer = new boost::asio::deadline_timer(this->io, boost::posix_time::seconds(this->timeout));
+		this->timer->async_wait(boost::bind(&VariableTimeout::invalidate, this));
+		this->ioRunner(boost::bind(&boost::asio::io_service::run, &io));
+	}
+std::cout << "DEBUG\n";
+std::cout << "this->variable: " << this->variable << "\n";
+
+	T local = this->variable;	
+std::cout << "this->variable is fine\n";
+
+	return this->variable;
+}
+
+template <class T>
+void VariableTimeout<T>::invalidate()
+{
+	this->mtx.lock();
+	this->stillValid = false;
+	this->mtx.unlock();
+}
+
+template class VariableTimeout<uint64_t>;
